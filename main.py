@@ -48,6 +48,9 @@ TICKETS_FILE = 'tickets.json'
 SABLE_TUTORIEL = 100  # Bonus sable pour terminer le tutoriel
 SABLE_SKIP_TUTORIEL = -50  # Pénalité pour skipper
 
+# Cooldowns (défini avant les fonctions)
+cooldowns = defaultdict(lambda: {})
+
 def ajouter_cooldown(user_id, commande, secondes):
     """Ajoute un cooldown pour une commande"""
     cooldowns[user_id][commande] = datetime.now().timestamp() + secondes
@@ -69,7 +72,7 @@ async def envoyer_log(message, type_log="INFO"):
     if LOG_CHANNEL_ID:
         try:
             channel = bot.get_channel(int(LOG_CHANNEL_ID))
-            if channel:
+            if isinstance(channel, discord.TextChannel):
                 await channel.send(f"```{log_message}```")
         except Exception as e:
             logger.error(f"Erreur lors de l'envoi du log: {e}")
@@ -475,9 +478,9 @@ async def assigner_role_classe(member, classe):
         await envoyer_log(f"Erreur rôle: {e}", "ERROR")
         return False
 
-def obtenir_pseudo_serveur(member):
+def obtenir_pseudo_serveur(member: discord.User | discord.Member):
     """Obtient le pseudo du serveur (nickname) ou le nom d'utilisateur"""
-    if member.nick:
+    if isinstance(member, discord.Member) and member.nick:
         return member.nick
     return member.name
 
@@ -486,9 +489,10 @@ def obtenir_pseudo_serveur(member):
 @bot.event
 async def on_ready():
     """Quand le bot est prêt"""
-    print(f'{bot.user} est connecté !')
-    print(f'Bot ID: {bot.user.id}')
-    await envoyer_log(f"Bot démarré - {bot.user.name}", "START")
+    if bot.user:
+        print(f'{bot.user} est connecté !')
+        print(f'Bot ID: {bot.user.id}')
+        await envoyer_log(f"Bot démarré - {bot.user.name}", "START")
     compteur_vocal.start()
     
     # Ajouter les views persistentes pour les boutons
@@ -603,6 +607,10 @@ class BoutonCommencerAventure(discord.ui.View):
             user_id = interaction.user.id
             guild = interaction.guild
             
+            if not guild:
+                await interaction.followup.send("❌ Erreur: Pas de serveur!", ephemeral=True)
+                return
+            
             # Vérifier si l'utilisateur a déjà un ticket
             ticket_existant = obtenir_ticket(user_id)
             if ticket_existant and not ticket_existant.get('archive'):
@@ -613,16 +621,18 @@ class BoutonCommencerAventure(discord.ui.View):
                 return
             
             # Créer le canal privé
+            fondateur = guild.get_member(FONDATEUR_ID) if FONDATEUR_ID else None
             overwrites = {
                 guild.default_role: discord.PermissionOverwrite(read_messages=False),
-                interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
-                guild.get_member(FONDATEUR_ID): discord.PermissionOverwrite(read_messages=True, send_messages=True)
+                interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True)
             }
+            if fondateur:
+                overwrites[fondateur] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
             
-            category = guild.get_channel(int(TICKETS_CATEGORY_ID))
+            category = guild.get_channel(int(TICKETS_CATEGORY_ID)) if TICKETS_CATEGORY_ID else None
             channel = await guild.create_text_channel(
                 f"🎮-aventure-{interaction.user.name}",
-                category=category,
+                category=category if isinstance(category, discord.CategoryChannel) else None,
                 overwrites=overwrites
             )
             
@@ -663,15 +673,15 @@ class BoutonsTutoriel(discord.ui.View):
             ticket['tutoriel_etape'] = etape_suivante
             sauvegarder_ticket(self.user_id, ticket)
         
-        if etape_suivante == 2:
+        if etape_suivante == 2 and isinstance(interaction.channel, discord.TextChannel):
             await envoyer_tutoriel_etape2(interaction.channel, interaction.user)
-        elif etape_suivante == 3:
+        elif etape_suivante == 3 and isinstance(interaction.channel, discord.TextChannel):
             await envoyer_tutoriel_etape3(interaction.channel, interaction.user)
-        elif etape_suivante == 4:
+        elif etape_suivante == 4 and isinstance(interaction.channel, discord.TextChannel):
             await envoyer_tutoriel_etape4(interaction.channel, interaction.user)
-        elif etape_suivante == 5:
+        elif etape_suivante == 5 and isinstance(interaction.channel, discord.TextChannel):
             await envoyer_tutoriel_etape5(interaction.channel, interaction.user)
-        elif etape_suivante == 6:
+        elif etape_suivante == 6 and isinstance(interaction.channel, discord.TextChannel):
             await envoyer_tutoriel_complete(interaction.channel, interaction.user)
 
 class BoutonsClasse(discord.ui.View):
@@ -723,11 +733,13 @@ class BoutonsClasse(discord.ui.View):
         
         # Assigner rôle
         try:
-            role_name = f"Rêveur {classe.capitalize()}"
-            role = discord.utils.get(interaction.guild.roles, name=role_name)
-            if not role:
-                role = await interaction.guild.create_role(name=role_name)
-            await interaction.user.add_roles(role)
+            if interaction.guild:
+                role_name = f"Rêveur {classe.capitalize()}"
+                role = discord.utils.get(interaction.guild.roles, name=role_name)
+                if not role:
+                    role = await interaction.guild.create_role(name=role_name)
+                if isinstance(interaction.user, discord.Member):
+                    await interaction.user.add_roles(role)
         except Exception as e:
             logger.error(f"Erreur assigning role: {e}")
         
@@ -737,6 +749,10 @@ class BoutonsClasse(discord.ui.View):
             color=discord.Color.green()
         )
         await interaction.followup.send(embed=embed, ephemeral=True)
+        
+        # Passer automatiquement à l'étape 3
+        if isinstance(interaction.channel, discord.TextChannel):
+            await envoyer_tutoriel_etape3(interaction.channel, interaction.user)
 
 class BoutonsFermeture(discord.ui.View):
     """Bouton pour fermer le salon d'aventure"""
@@ -777,7 +793,7 @@ class BoutonsFermeture(discord.ui.View):
 
 # Fonctions d'envoi du tutoriel
 
-async def envoyer_tutoriel_etape1(channel: discord.TextChannel, user: discord.User):
+async def envoyer_tutoriel_etape1(channel: discord.TextChannel, user: discord.User | discord.Member):
     """Étape 1: Bienvenue"""
     embed = discord.Embed(
         title="👋 Étape 1: Bienvenue",
@@ -811,7 +827,7 @@ async def envoyer_tutoriel_etape1(channel: discord.TextChannel, user: discord.Us
     view = BoutonsTutoriel(user.id, 1)
     await channel.send(embed=embed, view=view)
 
-async def envoyer_tutoriel_etape2(channel: discord.TextChannel, user: discord.User):
+async def envoyer_tutoriel_etape2(channel: discord.TextChannel, user: discord.User | discord.Member):
     """Étape 2: Choisir une classe"""
     embed = discord.Embed(
         title="🎭 Étape 2: Choisir Ta Classe",
@@ -835,7 +851,7 @@ async def envoyer_tutoriel_etape2(channel: discord.TextChannel, user: discord.Us
     view = BoutonsClasse(user.id)
     await channel.send(embed=embed, view=view)
 
-async def envoyer_tutoriel_etape3(channel: discord.TextChannel, user: discord.User):
+async def envoyer_tutoriel_etape3(channel: discord.TextChannel, user: discord.User | discord.Member):
     """Étape 3: Équipement gratuit"""
     embed = discord.Embed(
         title="🎁 Étape 3: Ton Premier Équipement",
@@ -879,7 +895,7 @@ async def envoyer_tutoriel_etape3(channel: discord.TextChannel, user: discord.Us
     view = BoutonsTutoriel(user.id, 3)
     await channel.send(embed=embed, view=view)
 
-async def envoyer_tutoriel_etape4(channel: discord.TextChannel, user: discord.User):
+async def envoyer_tutoriel_etape4(channel: discord.TextChannel, user: discord.User | discord.Member):
     """Étape 4: Système de sable"""
     embed = discord.Embed(
         title="💰 Étape 4: Comment Gagner du Sable",
@@ -914,7 +930,7 @@ async def envoyer_tutoriel_etape4(channel: discord.TextChannel, user: discord.Us
     view = BoutonsTutoriel(user.id, 4)
     await channel.send(embed=embed, view=view)
 
-async def envoyer_tutoriel_etape5(channel: discord.TextChannel, user: discord.User):
+async def envoyer_tutoriel_etape5(channel: discord.TextChannel, user: discord.User | discord.Member):
     """Étape 5: Commandes essentielles"""
     embed = discord.Embed(
         title="📚 Étape 5: Commandes Essentielles",
@@ -954,7 +970,7 @@ async def envoyer_tutoriel_etape5(channel: discord.TextChannel, user: discord.Us
     view = BoutonsTutoriel(user.id, 5)
     await channel.send(embed=embed, view=view)
 
-async def envoyer_tutoriel_complete(channel: discord.TextChannel, user: discord.User):
+async def envoyer_tutoriel_complete(channel: discord.TextChannel, user: discord.User | discord.Member):
     """Tutoriel complété"""
     embed = discord.Embed(
         title="🎉 Tutoriel Complété !",
@@ -1029,7 +1045,7 @@ async def afficher_sable(ctx):
         await envoyer_log(f"Erreur !sable: {e}", "ERROR")
 
 @bot.command(name='info')
-async def afficher_info(ctx, membre: discord.Member = None):
+async def afficher_info(ctx, membre: discord.Member | None = None):
     """Affiche les informations détaillées d'un profil"""
     try:
         if not verifier_cooldown(ctx.author.id, 'info'):
@@ -1040,6 +1056,10 @@ async def afficher_info(ctx, membre: discord.Member = None):
         
         if membre is None:
             membre = ctx.author
+        
+        if not membre:
+            await ctx.send("❌ Impossible de trouver le membre !")
+            return
         
         joueur = obtenir_joueur(membre.id)
         if not joueur:
@@ -1141,7 +1161,8 @@ async def afficher_info(ctx, membre: discord.Member = None):
             inline=False
         )
         
-        embed.set_thumbnail(url=membre.avatar.url if membre.avatar else None)
+        if membre.avatar:
+            embed.set_thumbnail(url=membre.avatar.url)
         await ctx.send(embed=embed)
     except Exception as e:
         logger.error(f"Erreur dans !info: {e}")
@@ -1149,7 +1170,7 @@ async def afficher_info(ctx, membre: discord.Member = None):
         await envoyer_log(f"Erreur !info: {e}", "ERROR")
 
 @bot.command(name='classe')
-async def choisir_classe(ctx, classe: str = None):
+async def choisir_classe(ctx, classe: str | None = None):
     """Choisit une classe (chevalier, samourai, mage)"""
     try:
         joueur = obtenir_joueur(ctx.author.id)
@@ -1243,7 +1264,7 @@ async def retirer_classe(ctx):
         await envoyer_log(f"Erreur !retirer_classe: {e}", "ERROR")
 
 @bot.command(name='boutique')
-async def afficher_boutique(ctx, categorie: str = None):
+async def afficher_boutique(ctx, categorie: str | None = None):
     """Affiche la boutique d'équipements"""
     try:
         if not verifier_cooldown(ctx.author.id, 'boutique'):
@@ -1547,6 +1568,70 @@ async def reset_economie(ctx):
         await ctx.send("❌ Une erreur s'est produite lors du reset !")
         await envoyer_log(f"Erreur !reset critique: {e}", "ERROR")
 
+@bot.command(name='setup_marchand')
+async def setup_marchand(ctx):
+    """Configure et poste le message d'accueil du jeu (fondateur seulement)"""
+    try:
+        if ctx.author.id != FONDATEUR_ID:
+            await ctx.send("❌ Vous n'avez pas la permission d'utiliser cette commande !")
+            return
+        
+        embed = discord.Embed(
+            title="🌙 Bienvenue au Marchand de Sable",
+            color=discord.Color.purple(),
+            description="Découvrez un monde magique où le sable est la monnaie suprême !",
+            url="https://discord.gg"
+        )
+        
+        embed.add_field(
+            name="✨ L'Aventure t'attend",
+            value="Clique sur le bouton ci-dessous pour commencer ton voyage !\n\n"
+                  "Tu seras guidé pas à pas à travers un tutoriel complet pour apprendre à jouer.",
+            inline=False
+        )
+        
+        embed.add_field(
+            name="🎯 L'Objectif",
+            value="Deviens le plus puissant de tous ! \n\n"
+                  "Accumule du sable magique ⏳ en restant actif sur le serveur et achète des équipements légendaires pour augmenter ta puissance. "
+                  "Tu découvriras comment gagner du sable lors du tutoriel ! 📚",
+            inline=False
+        )
+        
+        embed.add_field(
+            name="🛡️ Les 3 Grandes Classes",
+            value=f"{CLASSES['chevalier']['emoji']} **Chevalier** - Puissant et inébranlable\n"
+                  f"{CLASSES['samourai']['emoji']} **Samouraï** - Rapide et tranchant\n"
+                  f"{CLASSES['mage']['emoji']} **Mage** - Mystique et puissant",
+            inline=False
+        )
+        
+        embed.add_field(
+            name="📊 Progression Infinie",
+            value="Débloquez toujours de nouveaux équipements et niveaux ! "
+                  "Le système n'a pas de limite - deviens aussi puissant que tu le souhaites.",
+            inline=False
+        )
+        
+        embed.add_field(
+            name="🏆 Achievements & Prestige",
+            value="Gagne des badges en accomplissant des objectifs et deviens légendaire avec le système de prestige !",
+            inline=False
+        )
+        
+        embed.set_footer(text="Bonne chance, Rêveur ! 🌙")
+        embed.set_thumbnail(url="https://cdn-icons-png.flaticon.com/512/1995/1995506.png")
+        
+        view = BoutonCommencerAventure()
+        await ctx.send(embed=embed, view=view)
+        
+        await envoyer_log(f"{ctx.author.name} a posté le message d'accueil du Marchand de Sable", "SETUP")
+        await ctx.send("✅ Message d'accueil posté avec succès !")
+    except Exception as e:
+        logger.error(f"Erreur dans !setup_marchand: {e}")
+        await ctx.send("❌ Une erreur s'est produite !")
+        await envoyer_log(f"Erreur !setup_marchand: {e}", "ERROR")
+
 @bot.command(name='aide')
 async def afficher_aide(ctx):
     """Affiche l'aide du jeu"""
@@ -1659,11 +1744,15 @@ async def afficher_niveaux(ctx):
         await ctx.send("❌ Une erreur s'est produite !")
 
 @bot.command(name='achievements')
-async def afficher_achievements(ctx, utilisateur: discord.User = None):
+async def afficher_achievements(ctx, utilisateur: discord.User | None = None):
     """Affiche les achievements du joueur"""
     try:
         if utilisateur is None:
             utilisateur = ctx.author
+        
+        if not utilisateur:
+            await ctx.send("❌ Impossible de trouver l'utilisateur !")
+            return
         
         joueur = obtenir_joueur(utilisateur.id)
         if not joueur:
@@ -1732,7 +1821,7 @@ async def afficher_stats(ctx):
             if classe:
                 classes_count[classe] = classes_count.get(classe, 0) + 1
         
-        classe_populaire = "Aucune" if not classes_count else max(classes_count, key=classes_count.get)
+        classe_populaire = "Aucune" if not classes_count else max(classes_count, key=lambda x: classes_count[x])
         
         # Joueur plus riche
         joueur_plus_riche = max(joueurs.values(), key=lambda j: j.get('sable', 0))
@@ -1809,76 +1898,6 @@ async def afficher_stats(ctx):
         logger.error(f"Erreur dans !stats: {e}")
         await ctx.send("❌ Une erreur s'est produite !")
         await envoyer_log(f"Erreur !stats: {e}", "ERROR")
-
-@bot.command(name='setup_marchand')
-@commands.has_permissions(administrator=True)
-async def setup_marchand(ctx):
-    """Configure le salon principal du Marchand de Sable (Admin)"""
-    try:
-        embed = discord.Embed(
-            title="🌙 Le Marchand de Sable",
-            description="Bienvenue dans l'univers du Marchand de Sable, où le sable magique ⏳ est roi !",
-            color=discord.Color.purple()
-        )
-        
-        embed.add_field(
-            name="📖 L'Histoire",
-            value="Tu as découvert un marché magique contrôlé par un mystérieux marchand. "
-                  "Ici, le sable magique est la monnaie ultime. En restant actif sur le serveur Discord, "
-                  "tu accumules du sable et peux acheter des équipements de plus en plus puissants et rares.",
-            inline=False
-        )
-        
-        embed.add_field(
-            name="🎯 Le Défi",
-            value="Devenir le plus puissant de tous ! Accumule du sable ⏳, achète des équipements légendaires, "
-                  "monte de niveau infini et batts tes compétiteurs. Chaque action te rapproche de la gloire !",
-            inline=False
-        )
-        
-        embed.add_field(
-            name="💰 Comment Gagner du Sable",
-            value=f"• Envoyer des messages: +{SABLE_PAR_MESSAGE} ⏳\n"
-                  f"• Rester en vocal: +{SABLE_PAR_MINUTE_VOCAL} ⏳/min\n"
-                  f"• Booster le serveur: +{SABLE_BOOST_SERVEUR} ⏳\n"
-                  f"• Daily login: +200 ⏳ (avec système de streak 🔥)",
-            inline=False
-        )
-        
-        embed.add_field(
-            name="🎮 Ce que tu peux faire",
-            value="• Choisir une classe parmi 3 (Chevalier, Samouraï, Mage)\n"
-                  "• Acheter des équipements uniques à ta classe\n"
-                  "• Monter de niveau de façon infinie\n"
-                  "• Débloquer des achievements et badges\n"
-                  "• Faire des prestigies pour un nouveau départ",
-            inline=False
-        )
-        
-        embed.add_field(
-            name="✨ Prestige & Dailies",
-            value="À niveau 100, fais un prestige pour recommencer avec un bonus permanent ! "
-                  "Reçois ton bonus quotidien et garde ta streak pour des multiplicateurs !",
-            inline=False
-        )
-        
-        embed.add_field(
-            name="🚀 Commandes Principales",
-            value="`!sable` `!info` `!classe` `!boutique` `!achievements` "
-                  "`!stats` `!daily` `!prestige` `!aide`",
-            inline=False
-        )
-        
-        embed.set_footer(text="Clique sur 'Commencer l'Aventure' pour débuter!")
-        embed.set_image(url="https://media.discordapp.net/attachments/1231321312312/1231321312/banner.png")  # Optional
-        
-        view = BoutonCommencerAventure()
-        await ctx.send(embed=embed, view=view)
-        await ctx.send("✅ Salon principal configuré !")
-        
-    except Exception as e:
-        logger.error(f"Erreur dans !setup_marchand: {e}")
-        await ctx.send("❌ Une erreur s'est produite !")
 
 @bot.command(name='daily')
 async def daily_login(ctx):
