@@ -598,7 +598,7 @@ class BoutonCommencerAventure(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
     
-    @discord.ui.button(label="Commencer l'Aventure", style=discord.ButtonStyle.success, emoji="🎮")
+    @discord.ui.button(label="Commencer l'Aventure", style=discord.ButtonStyle.success, emoji="🎮", custom_id="btn_commencer_aventure")
     async def commencer(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Crée un ticket pour l'utilisateur"""
         await interaction.response.defer()
@@ -658,7 +658,7 @@ class BoutonsTutoriel(discord.ui.View):
         self.user_id = user_id
         self.etape = etape
     
-    @discord.ui.button(label="Suivant", style=discord.ButtonStyle.primary, emoji="➡️")
+    @discord.ui.button(label="Suivant", style=discord.ButtonStyle.primary, emoji="➡️", custom_id="btn_tutoriel_suivant")
     async def suivant(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Passe à l'étape suivante"""
         if interaction.user.id != self.user_id:
@@ -690,21 +690,21 @@ class BoutonsClasse(discord.ui.View):
         super().__init__(timeout=None)
         self.user_id = user_id
     
-    @discord.ui.button(label="Chevalier", style=discord.ButtonStyle.danger, emoji="🛡️")
+    @discord.ui.button(label="Chevalier", style=discord.ButtonStyle.danger, emoji="🛡️", custom_id="btn_classe_chevalier")
     async def chevalier(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.user_id:
             await interaction.response.defer()
             return
         await self.choisir_classe(interaction, "chevalier")
     
-    @discord.ui.button(label="Samouraï", style=discord.ButtonStyle.secondary, emoji="⚔️")
+    @discord.ui.button(label="Samouraï", style=discord.ButtonStyle.secondary, emoji="⚔️", custom_id="btn_classe_samourai")
     async def samourai(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.user_id:
             await interaction.response.defer()
             return
         await self.choisir_classe(interaction, "samourai")
     
-    @discord.ui.button(label="Mage", style=discord.ButtonStyle.blurple, emoji="✨")
+    @discord.ui.button(label="Mage", style=discord.ButtonStyle.blurple, emoji="✨", custom_id="btn_classe_mage")
     async def mage(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.user_id:
             await interaction.response.defer()
@@ -760,7 +760,7 @@ class BoutonsFermeture(discord.ui.View):
         super().__init__(timeout=None)
         self.user_id = user_id
     
-    @discord.ui.button(label="Terminer l'Aventure", style=discord.ButtonStyle.red, emoji="🏁")
+    @discord.ui.button(label="Terminer l'Aventure", style=discord.ButtonStyle.red, emoji="🏁", custom_id="btn_fermer_aventure")
     async def fermer(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id != self.user_id:
             await interaction.response.defer()
