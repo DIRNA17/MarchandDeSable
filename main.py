@@ -506,8 +506,10 @@ async def on_ready():
         bot.add_view(BoutonsClasse(0))
         bot.add_view(BoutonsFermeture(0))
         views_added = True
-    
-    compteur_vocal.start()
+        
+        # Démarrer le compteur vocal une seule fois
+        if not compteur_vocal.is_running():
+            compteur_vocal.start()
 
 @bot.event
 async def on_message(message):
