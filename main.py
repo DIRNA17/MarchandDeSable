@@ -493,13 +493,16 @@ async def on_ready():
         print(f'{bot.user} est connecté !')
         print(f'Bot ID: {bot.user.id}')
         await envoyer_log(f"Bot démarré - {bot.user.name}", "START")
-    compteur_vocal.start()
     
-    # Ajouter les views persistentes pour les boutons
-    bot.add_view(BoutonCommencerAventure())
-    bot.add_view(BoutonsTutoriel(0, 0))  # Les user_id/etape vrai seront mis à jour
-    bot.add_view(BoutonsClasse(0))
-    bot.add_view(BoutonsFermeture(0))
+    # Ajouter les views persistentes pour les boutons (une seule fois)
+    if not hasattr(bot, 'views_added'):
+        bot.add_view(BoutonCommencerAventure())
+        bot.add_view(BoutonsTutoriel(0, 0))  # Les user_id/etape vrai seront mis à jour
+        bot.add_view(BoutonsClasse(0))
+        bot.add_view(BoutonsFermeture(0))
+        bot.views_added = True
+    
+    compteur_vocal.start()
 
 @bot.event
 async def on_message(message):
@@ -1003,8 +1006,7 @@ async def envoyer_tutoriel_complete(channel: discord.TextChannel, user: discord.
         ticket['tutoriel_complete'] = True
         sauvegarder_ticket(user.id, ticket)
     
-    view = BoutonsFermeture(user.id)
-    await channel.send(embed=embed, view=view)
+    await channel.send(embed=embed)
 
 # ================== COMMANDES ==================
 
