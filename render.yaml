@@ -1,0 +1,17 @@
+services:
+  - type: web
+    name: marchand-de-sable-bot
+    runtime: python-3.12
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    envVars:
+      - key: DISCORD_TOKEN
+        scope: build
+      - key: FONDATEUR_ID
+        scope: build
+      - key: LOG_CHANNEL_ID
+        scope: build
+      - key: MAIN_CHANNEL_ID
+        scope: build
+      - key: TICKETS_CATEGORY_ID
+        scope: build
