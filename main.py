@@ -27,6 +27,9 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 # Flag pour ajouter les views une seule fois
 views_added = False
 
+# Flag pour éviter les doublons de commandes
+last_command = {}
+
 # Constantes
 SABLE_PAR_MESSAGE = 10
 SABLE_BOOST_SERVEUR = 500
@@ -496,10 +499,28 @@ async def on_ready():
         bot.add_view(BoutonsFermeture(0))
         views_added = True
 
+@bot.before_invoke
+async def before_invoke(ctx):
+    """Évite les doublons de commandes"""
+    global last_command
+    
+    # Créer une clé unique pour le message
+    key = f"{ctx.author.id}:{ctx.message.id}"
+    current_time = datetime.now().timestamp()
+    
+    # Vérifier si la même commande a été exécutée récemment (dans les 100ms)
+    if key in last_command:
+        if current_time - last_command[key] < 0.1:
+            await ctx.message.delete()
+            return
+    
+    last_command[key] = current_time
+
 @bot.event
 async def on_message(message):
     """Récompense les messages"""
-    if message.author.bot:
+    # Ne pas traiter les messages des bots et les messages sans contenu
+    if message.author.bot or not message.content:
         return
     
     try:
@@ -527,6 +548,7 @@ async def on_message(message):
         logger.error(f"Erreur dans on_message: {e}")
         await envoyer_log(f"Erreur message: {e}", "ERROR")
     
+    # Traiter les commandes (! prefix)
     await bot.process_commands(message)
 
 @bot.event
