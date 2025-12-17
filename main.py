@@ -24,6 +24,9 @@ intents.members = True
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 
+# Flag pour ajouter les views une seule fois
+views_added = False
+
 # Constantes
 SABLE_PAR_MESSAGE = 10
 SABLE_PAR_MINUTE_VOCAL = 5
@@ -489,18 +492,20 @@ def obtenir_pseudo_serveur(member: discord.User | discord.Member):
 @bot.event
 async def on_ready():
     """Quand le bot est prêt"""
+    global views_added
+    
     if bot.user:
         print(f'{bot.user} est connecté !')
         print(f'Bot ID: {bot.user.id}')
         await envoyer_log(f"Bot démarré - {bot.user.name}", "START")
     
     # Ajouter les views persistentes pour les boutons (une seule fois)
-    if not hasattr(bot, 'views_added'):
+    if not views_added:
         bot.add_view(BoutonCommencerAventure())
         bot.add_view(BoutonsTutoriel(0, 0))  # Les user_id/etape vrai seront mis à jour
         bot.add_view(BoutonsClasse(0))
         bot.add_view(BoutonsFermeture(0))
-        bot.views_added = True
+        views_added = True
     
     compteur_vocal.start()
 
