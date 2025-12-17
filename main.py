@@ -29,7 +29,6 @@ views_added = False
 
 # Constantes
 SABLE_PAR_MESSAGE = 10
-SABLE_PAR_MINUTE_VOCAL = 5
 SABLE_BOOST_SERVEUR = 500
 SABLE_INVITE = 100
 JOUEURS_FILE = 'joueurs.json'
@@ -200,12 +199,6 @@ ACHIEVEMENTS = {
         'description': 'Envoyer 100 messages',
         'condition': lambda profil: profil.get('messages_envoyes', 0) >= 100
     },
-    'voice_master': {
-        'nom': 'Maître du vocal',
-        'emoji': '🎤',
-        'description': 'Passer 1 heure en vocal',
-        'condition': lambda profil: profil.get('temps_vocal_minutes', 0) >= 60
-    },
     'boost_champion': {
         'nom': 'Champion du boost',
         'emoji': '🚀',
@@ -254,9 +247,7 @@ def migrer_profil(profil):
         'puissance': profil.get('puissance', 0),
         'niveau': profil.get('niveau', 1),
         'date_creation': profil.get('date_creation', datetime.now().isoformat()),
-        'temps_vocal_minutes': profil.get('temps_vocal_minutes', 0),
         'dernier_gain_message': profil.get('dernier_gain_message', 0),
-        'dernier_gain_vocal': profil.get('dernier_gain_vocal', 0),
         'achievements': profil.get('achievements', []),
         'messages_envoyes': profil.get('messages_envoyes', 0),
         'sable_depense': profil.get('sable_depense', 0),
@@ -280,9 +271,7 @@ def creer_profil_joueur(user_id, username):
         'puissance': 0,
         'niveau': 1,
         'date_creation': datetime.now().isoformat(),
-        'temps_vocal_minutes': 0,
         'dernier_gain_message': 0,
-        'dernier_gain_vocal': 0,
         'achievements': [],
         'messages_envoyes': 0,
         'sable_depense': 0,
@@ -506,10 +495,6 @@ async def on_ready():
         bot.add_view(BoutonsClasse(0))
         bot.add_view(BoutonsFermeture(0))
         views_added = True
-        
-        # Démarrer le compteur vocal une seule fois
-        if not compteur_vocal.is_running():
-            compteur_vocal.start()
 
 @bot.event
 async def on_message(message):
@@ -545,17 +530,6 @@ async def on_message(message):
     await bot.process_commands(message)
 
 @bot.event
-async def on_voice_state_update(member, before, after):
-    """Gère les changements d'état vocal"""
-    try:
-        joueur = obtenir_joueur(member.id)
-        if not joueur:
-            joueur = creer_profil_joueur(member.id, member.name)
-            sauvegarder_joueur(member.id, joueur)
-    except Exception as e:
-        logger.error(f"Erreur dans on_voice_state_update: {e}")
-
-@bot.event
 async def on_member_update(before, after):
     """Détecte les boosts du serveur"""
     try:
@@ -581,25 +555,8 @@ async def on_member_update(before, after):
 
 @tasks.loop(minutes=1)
 async def compteur_vocal():
-    """Récompense les utilisateurs en vocal chaque minute"""
-    try:
-        for guild in bot.guilds:
-            for member in guild.members:
-                if member.voice and member.voice.channel and not member.bot:
-                    joueur = obtenir_joueur(member.id)
-                    if not joueur:
-                        joueur = creer_profil_joueur(member.id, member.name)
-                    
-                    if joueur['classe']:
-                        timestamp_actuel = datetime.now().timestamp()
-                        if timestamp_actuel - joueur.get('dernier_gain_vocal', 0) >= 60:  # 1 minute minimum
-                            joueur['sable'] += SABLE_PAR_MINUTE_VOCAL
-                            joueur['temps_vocal_minutes'] += 1
-                            joueur['dernier_gain_vocal'] = timestamp_actuel
-                            sauvegarder_joueur(member.id, joueur)
-    except Exception as e:
-        logger.error(f"Erreur dans compteur_vocal: {e}")
-        await envoyer_log(f"Erreur vocal: {e}", "ERROR")
+    """Récompense les utilisateurs en vocal chaque minute (DÉSACTIVÉ)"""
+    pass
 
 # ================== VIEWS ET BOUTONS ==================
 
@@ -920,18 +877,6 @@ async def envoyer_tutoriel_etape4(channel: discord.TextChannel, user: discord.Us
     )
     
     embed.add_field(
-        name="🎤 Vocal",
-        value=f"+{SABLE_PAR_MINUTE_VOCAL} ⏳ par minute en vocal",
-        inline=False
-    )
-    
-    embed.add_field(
-        name="🚀 Boosts Serveur",
-        value=f"+{SABLE_BOOST_SERVEUR} ⏳ quand tu boostes le serveur",
-        inline=False
-    )
-    
-    embed.add_field(
         name="⏳ Progression",
         value="**Étape 4 de 5** - Système de Sable",
         inline=False
@@ -1115,12 +1060,6 @@ async def afficher_info(ctx, membre: discord.Member | None = None):
         embed.add_field(
             name="📊 Niveau et Puissance",
             value=f"Niveau: **{niveau}** ⭐\nPuissance: {joueur['puissance']} ⚡\nProchain palier: {prochain_seuil} ⚡",
-            inline=False
-        )
-        
-        embed.add_field(
-            name="🎙️ Activité",
-            value=f"Temps en vocal: {joueur['temps_vocal_minutes']} minutes",
             inline=False
         )
         
@@ -1549,9 +1488,7 @@ async def reset_economie(ctx):
             profil['armure'] = None
             profil['puissance'] = 0
             profil['niveau'] = 1
-            profil['temps_vocal_minutes'] = 0
             profil['dernier_gain_message'] = 0
-            profil['dernier_gain_vocal'] = 0
             joueurs_resetés += 1
         
         sauvegarder_joueurs(joueurs)
@@ -1683,7 +1620,6 @@ async def afficher_aide(ctx):
             name="💰 Comment gagner du sable",
             value=f"**⚠️ Vous devez d'abord choisir une classe avec `!classe`**\n\n"
                   f"• Envoyer un message: +{SABLE_PAR_MESSAGE} ⏳\n"
-                  f"• Rester en vocal (par minute): +{SABLE_PAR_MINUTE_VOCAL} ⏳\n"
                   f"• Booster le serveur: +{SABLE_BOOST_SERVEUR} ⏳",
             inline=False
         )
