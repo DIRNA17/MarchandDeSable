@@ -1,0 +1,24 @@
+{
+  "699786476560580638": {
+    "id": "699786476560580638",
+    "username": "dirna17",
+    "sable": 125,
+    "classe": "samourai",
+    "arme": "Katana en bois",
+    "armure": null,
+    "puissance": 8,
+    "niveau": 1,
+    "date_creation": "2025-12-17T04:40:25.087492",
+    "temps_vocal_minutes": 9,
+    "dernier_gain_message": 1765945037.219793,
+    "dernier_gain_vocal": 1765945502.256217,
+    "achievements": ["first_steps"],
+    "messages_envoyes": 25,
+    "sable_depense": 80,
+    "boosts": 0,
+    "equipment_count": 1,
+    "prestige": 0,
+    "dernier_daily": null,
+    "streak_daily": 0
+  }
+}
